@@ -6,7 +6,8 @@ USER root
 
 # Instalar dependências do sistema e npm em uma única camada
 RUN apk add --no-cache git curl && \
-    npm install -g langfuse --unsafe-perm || true && \
+    npm install -g langfuse \
+    langfuse-langchain \ --unsafe-perm || true && \
     npm cache clean --force && \
     rm -rf /tmp/* /var/cache/apk/*
 
