@@ -1,7 +1,7 @@
 # .github/workflows/auto-build.yml
 # ZION N8N - Auto Builder Inteligente (VERSÃO CORRIGIDA)
 
-name: Buildar nova versão
+name: 🚀 ZION | n8n Smart Build
 
 on:
   schedule:
