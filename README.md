@@ -1,161 +1,222 @@
-# 🚀 ZION/N8N - Stack Automatizada
+# 🚀 ZION N8N - Smart Auto Builder
 
-[![Auto Build](https://github.com/zion/n8n/actions/workflows/build.yml/badge.svg)](https://github.com/zion/n8n/actions)
-[![Docker Pulls](https://img.shields.io/docker/pulls/zion/n8n)](https://hub.docker.com/r/zion/n8n)
-[![Version](https://img.shields.io/docker/v/zion/n8n/latest?label=version)](https://hub.docker.com/r/zion/n8n/tags)
-[![Zion Community](https://img.shields.io/badge/community-zion-purple)](https://t.me/zioncommunity)
+## ✨ O que o Smart Builder faz:
 
-> **n8n turbinado com ferramentas extras + atualização automática diária!**
+1. **Verifica** a versão do n8n oficial 2x por dia
+2. **Compara** com a versão que já buildamos
+3. **Só builda se necessário** (economia de recursos)
+4. **Tageia corretamente** com a versão do n8n
+5. **Notifica** a comunidade quando houver update
+6. **Multi-arquitetura** (amd64 e arm64)
 
-## ⚡ Instalação Rápida
+## 📁 Estrutura Final
+
+```
+zion-n8n/
+├── .github/
+│   └── workflows/
+│       └── auto-build.yml    # Smart builder
+├── Dockerfile                 # Com versionamento
+├── healthcheck.sh            # Script de health
+├── monitor.sh                # Script de monitoramento
+├── docker-compose.yml        # Para a comunidade
+└── README.md
+```
+
+## 🎯 Setup Completo (5 minutos)
+
+### 1️⃣ Criar Repositório
 
 ```bash
-docker run -d \
-  --name zion-n8n \
-  -p 5678:5678 \
-  -v zion_n8n_data:/home/node/.n8n \
-  zion/n8n:latest
+# Criar e entrar no diretório
+mkdir zion-n8n && cd zion-n8n
+
+# Inicializar git
+git init
 ```
 
-**Acesse:** http://localhost:5678
+### 2️⃣ Copiar os Arquivos
 
-## 🐳 Docker Compose
+1. **Dockerfile** (artifact: `zion-dockerfile-smart`)
+2. **auto-build.yml** (artifact: `zion-smart-builder`) 
+3. **monitor.sh** (artifact: `zion-monitor-script`)
+
+### 3️⃣ Criar healthcheck.sh
 
 ```bash
-# Baixar e rodar
-curl -O https://raw.githubusercontent.com/zion/n8n/main/docker-compose.yml
-docker-compose up -d
+cat > healthcheck.sh << 'EOF'
+#!/bin/sh
+if curl -f http://localhost:5678/healthz 2>/dev/null; then
+    echo "✅ ZION N8N is healthy"
+    exit 0
+else
+    echo "❌ ZION N8N is not responding"
+    exit 1
+fi
+EOF
+
+chmod +x healthcheck.sh
 ```
 
-## 🎯 O que tem na Stack ZION?
-
-### Base
-- ✅ **n8n** sempre na última versão (atualiza todo dia automaticamente!)
-- ✅ **Python 3** com pip
-- ✅ **Git** para versionamento
-- ✅ **FFmpeg** para processamento de mídia
-- ✅ **ImageMagick** para manipulação de imagens
-
-### Bibliotecas Python Incluídas
-```python
-pandas          # Análise de dados
-requests        # Requisições HTTP
-beautifulsoup4  # Web scraping
-openai          # Integração com GPT
-selenium        # Automação web
-playwright      # Automação moderna
-```
-
-### Configurações Otimizadas
-- 🇧🇷 Timezone Brasil configurado
-- 🔧 Performance otimizada
-- 🔐 Segurança reforçada
-- 📦 Zero configuração necessária
-
-## 🔄 Atualização
-
-A imagem é **reconstruída automaticamente** todo dia com a última versão do n8n!
+### 4️⃣ Push para GitHub
 
 ```bash
-# Para atualizar sua instância
-docker-compose pull
-docker-compose up -d
+# Adicionar arquivos
+git add .
+git commit -m "🚀 ZION N8N Smart Builder"
+
+# Criar repo no GitHub
+gh repo create zion-n8n --public --source=.
+
+# Push
+git push -u origin main
 ```
 
-## 📊 Variáveis de Ambiente
+### 5️⃣ Configurar Secrets no GitHub
 
+Vá em **Settings > Secrets and variables > Actions** e adicione:
+
+| Secret | Valor | Obrigatório |
+|--------|-------|-------------|
+| `DOCKER_USERNAME` | seu_usuario | ✅ Sim |
+| `DOCKER_PASSWORD` | sua_senha | ✅ Sim |
+| `TELEGRAM_TOKEN` | token_bot | ❌ Opcional |
+| `TELEGRAM_CHAT_ID` | @canal | ❌ Opcional |
+| `DISCORD_WEBHOOK` | url_webhook | ❌ Opcional |
+
+## 🎮 Como Funciona
+
+### Build Automático
+- **Executa 2x ao dia** (00:00 e 12:00 UTC)
+- **Verifica** se há nova versão do n8n
+- **Só builda se necessário**
+
+### Build Manual
+```bash
+# Via GitHub CLI
+gh workflow run auto-build.yml -f force_build=true
+
+# Ou pelo GitHub UI
+Actions > ZION N8N Smart Build > Run workflow > force_build: true
+```
+
+### Monitoramento
+```bash
+# Verificar status
+./monitor.sh --check
+
+# Menu interativo
+./monitor.sh
+
+# Monitoramento contínuo
+./monitor.sh
+# Escolha opção 6
+```
+
+## 📊 Tags Criadas Automaticamente
+
+Para cada versão nova, são criadas as tags:
+
+- `zion/n8n:latest` - sempre a mais recente
+- `zion/n8n:1.23.0` - versão específica do n8n
+- `zion/n8n:1.23.0-20240115` - versão + data do build
+- `zion/n8n:stable` - última versão estável (sem -beta)
+
+## 🔔 Notificações
+
+Quando houver nova versão, o sistema:
+
+1. **Cria Release** no GitHub
+2. **Notifica Telegram** (se configurado)
+3. **Notifica Discord** (se configurado)
+4. **Atualiza Docker Hub** com as tags
+
+## 📈 Vantagens do Smart Builder
+
+| Feature | Benefício |
+|---------|-----------|
+| **Build Inteligente** | Só builda quando necessário |
+| **Versionamento Correto** | Tags com versão real do n8n |
+| **Multi-arquitetura** | Funciona em ARM (Raspberry) |
+| **Notificações** | Comunidade sempre informada |
+| **Cache Otimizado** | Builds mais rápidas |
+| **Healthcheck** | Monitora saúde do container |
+
+## 🎯 Para a Comunidade
+
+### Instalação Simples
+```bash
+# Última versão
+docker run -d -p 5678:5678 zion/n8n:latest
+
+# Versão específica
+docker run -d -p 5678:5678 zion/n8n:1.23.0
+```
+
+### Sempre Atualizado
+```bash
+# Pull da nova versão
+docker pull zion/n8n:latest
+
+# Restart
+docker-compose restart
+```
+
+## 🛠 Customizações Extras
+
+### Adicionar mais ferramentas no Dockerfile:
+```dockerfile
+RUN apk add --no-cache \
+    sua-ferramenta \
+    outro-pacote
+
+RUN pip3 install \
+    seu-modulo-python
+```
+
+### Ajustar frequência de verificação:
 ```yaml
-# Básicas (já configuradas)
-GENERIC_TIMEZONE: America/Sao_Paulo
-TZ: America/Sao_Paulo
-
-# Opcionais
-N8N_ENCRYPTION_KEY: sua_chave_segura
-N8N_BASIC_AUTH_USER: admin
-N8N_BASIC_AUTH_PASSWORD: senha_forte
-WEBHOOK_URL: https://seu-dominio.com/
+schedule:
+  - cron: '0 */4 * * *'  # A cada 4 horas
 ```
 
-## 🛠️ Personalização
-
-### Quer adicionar algo?
-
-1. Fork este repo
-2. Edite o `Dockerfile`:
-
-```dockerfile
-# Adicione suas ferramentas
-RUN apk add --no-cache sua-ferramenta
-
-# Adicione suas libs Python
-RUN pip3 install sua-lib
+### Adicionar mais notificações:
+```yaml
+- name: Email
+  uses: dawidd6/action-send-mail@v3
+  with:
+    to: comunidade@zion.dev
+    subject: Nova versão ZION/N8N
 ```
 
-3. Push = Nova build automática!
+## ✅ Checklist Final
 
-### Nodes Customizados
+- [ ] Repositório criado no GitHub
+- [ ] Arquivos copiados (Dockerfile, workflows, etc)
+- [ ] Secrets configurados (Docker Hub credentials)
+- [ ] Primeiro push feito
+- [ ] GitHub Actions rodando
+- [ ] Imagem disponível no Docker Hub
+- [ ] Comunidade notificada
 
-Coloque seus nodes em `/zion-nodes` e eles serão incluídos automaticamente:
+## 🚀 Resultado
 
-```dockerfile
-COPY zion-nodes /home/node/.n8n/custom
-```
-
-## 🔗 Links Úteis
-
-- 📦 [Docker Hub](https://hub.docker.com/r/zion/n8n)
-- 💬 [Comunidade Zion](https://t.me/zioncommunity)
-- 📚 [Documentação n8n](https://docs.n8n.io)
-- 🐛 [Reportar Problema](https://github.com/zion/n8n/issues)
-
-## 🏗️ Build Local
-
-```bash
-# Clone
-git clone https://github.com/zion/n8n.git
-cd n8n
-
-# Build
-docker build -t zion/n8n:local .
-
-# Run
-docker run -d -p 5678:5678 zion/n8n:local
-```
-
-## 📈 Status
-
-- **Última Build:** ![Build Date](https://img.shields.io/docker/automated/zion/n8n)
-- **Tamanho:** ![Image Size](https://img.shields.io/docker/image-size/zion/n8n/latest)
-- **n8n Version:** ![n8n Version](https://img.shields.io/badge/dynamic/json?url=https://api.github.com/repos/n8n-io/n8n/releases/latest&label=n8n&query=$.tag_name)
-
-## 🤝 Contribuindo
-
-PRs são bem-vindos! 
-
-```bash
-# 1. Fork
-# 2. Crie sua branch
-git checkout -b feature/minha-feature
-
-# 3. Commit
-git commit -m "feat: adiciona X"
-
-# 4. Push
-git push origin feature/minha-feature
-
-# 5. Abra um PR
-```
-
-## 📝 Licença
-
-MIT - Use como quiser!
+Você terá:
+- ✅ **Build automático** apenas quando necessário
+- ✅ **Versionamento correto** com tags do n8n
+- ✅ **Zero manutenção** após configurar
+- ✅ **Comunidade feliz** com updates automáticos
+- ✅ **Economia de recursos** (não builda à toa)
 
 ---
 
-<div align="center">
-  
-**Feito com ❤️ pela Comunidade Zion**
+## 💡 Dica Pro
 
-[Telegram](https://t.me/zioncommunity) • [Discord](https://discord.gg/zion) • [GitHub](https://github.com/zion)
+Use o badge no README da comunidade:
 
-</div>
+```markdown
+[![ZION N8N Version](https://img.shields.io/docker/v/zion/n8n/latest?label=ZION%20N8N)](https://hub.docker.com/r/zion/n8n)
+[![Build Status](https://github.com/zion/n8n/actions/workflows/auto-build.yml/badge.svg)](https://github.com/zion/n8n/actions)
+```
+
+Isso mostra sempre a versão atual e o status do build! 🎯
