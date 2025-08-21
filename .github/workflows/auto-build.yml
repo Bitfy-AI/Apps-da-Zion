@@ -22,7 +22,7 @@ on:
       - 'Dockerfile'
 
 env:
-  IMAGE_NAME: zion/n8n
+  IMAGE_NAME: iazion/n8n
 
 jobs:
   check-version:
