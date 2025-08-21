@@ -1,222 +1,268 @@
-# 🚀 ZION N8N - Smart Auto Builder
+# 🚀 ZION Smart Builder - Documentação
 
-## ✨ O que o Smart Builder faz:
+## 📋 Visão Geral
 
-1. **Verifica** a versão do n8n oficial 2x por dia
-2. **Compara** com a versão que já buildamos
-3. **Só builda se necessário** (economia de recursos)
-4. **Tageia corretamente** com a versão do n8n
-5. **Notifica** a comunidade quando houver update
-6. **Multi-arquitetura** (amd64 e arm64)
+O **ZION Smart Builder** é um sistema de CI/CD inteligente que automatiza completamente o processo de build e deploy de imagens Docker customizadas, verificando atualizações e buildando apenas quando necessário.
 
-## 📁 Estrutura Final
+## 🎯 Funcionalidades Principais
+
+### Automação Inteligente
+- ✅ **Verificação automática** de novas versões (2x ao dia)
+- ✅ **Build condicional** - só builda quando há atualizações
+- ✅ **Multi-arquitetura** - Suporte para AMD64 e ARM64
+- ✅ **Versionamento semântico** automático
+- ✅ **Notificações** via Telegram, Discord e GitHub Releases
+- ✅ **Cache otimizado** para builds rápidas
+
+## 🛠 Configuração Rápida
+
+### 1. Preparar Repositório
+
+```bash
+# Criar estrutura do projeto
+mkdir meu-projeto && cd meu-projeto
+git init
+
+# Criar estrutura de pastas
+mkdir -p .github/workflows
+```
+
+### 2. Estrutura de Arquivos
 
 ```
-zion-n8n/
+meu-projeto/
 ├── .github/
 │   └── workflows/
-│       └── auto-build.yml    # Smart builder
-├── Dockerfile                 # Com versionamento
-├── healthcheck.sh            # Script de health
-├── monitor.sh                # Script de monitoramento
-├── docker-compose.yml        # Para a comunidade
-└── README.md
+│       └── auto-build.yml    # Pipeline CI/CD
+├── Dockerfile                 # Imagem customizada
+├── docker-compose.yml         # Para desenvolvimento
+└── README.md                  # Documentação
 ```
 
-## 🎯 Setup Completo (5 minutos)
+### 3. Configurar GitHub Secrets
 
-### 1️⃣ Criar Repositório
+| Secret | Descrição | Obrigatório |
+|--------|-----------|-------------|
+| `DOCKER_USERNAME` | Usuário Docker Hub | ✅ |
+| `DOCKER_PASSWORD` | Token de acesso Docker Hub | ✅ |
+| `TELEGRAM_TOKEN` | Token do bot Telegram | ⚪ |
+| `TELEGRAM_CHAT_ID` | ID do chat/canal | ⚪ |
+| `DISCORD_WEBHOOK` | URL webhook Discord | ⚪ |
 
-```bash
-# Criar e entrar no diretório
-mkdir zion-n8n && cd zion-n8n
-
-# Inicializar git
-git init
-```
-
-### 2️⃣ Copiar os Arquivos
-
-1. **Dockerfile** (artifact: `zion-dockerfile-smart`)
-2. **auto-build.yml** (artifact: `zion-smart-builder`) 
-3. **monitor.sh** (artifact: `zion-monitor-script`)
-
-### 3️⃣ Criar healthcheck.sh
+### 4. Deploy
 
 ```bash
-cat > healthcheck.sh << 'EOF'
-#!/bin/sh
-if curl -f http://localhost:5678/healthz 2>/dev/null; then
-    echo "✅ ZION N8N is healthy"
-    exit 0
-else
-    echo "❌ ZION N8N is not responding"
-    exit 1
-fi
-EOF
-
-chmod +x healthcheck.sh
-```
-
-### 4️⃣ Push para GitHub
-
-```bash
-# Adicionar arquivos
 git add .
-git commit -m "🚀 ZION N8N Smart Builder"
-
-# Criar repo no GitHub
-gh repo create zion-n8n --public --source=.
-
-# Push
+git commit -m "🚀 Initial setup"
+git remote add origin https://github.com/seu-usuario/seu-repo.git
 git push -u origin main
 ```
 
-### 5️⃣ Configurar Secrets no GitHub
+## 📊 Fluxo de Trabalho
 
-Vá em **Settings > Secrets and variables > Actions** e adicione:
-
-| Secret | Valor | Obrigatório |
-|--------|-------|-------------|
-| `DOCKER_USERNAME` | seu_usuario | ✅ Sim |
-| `DOCKER_PASSWORD` | sua_senha | ✅ Sim |
-| `TELEGRAM_TOKEN` | token_bot | ❌ Opcional |
-| `TELEGRAM_CHAT_ID` | @canal | ❌ Opcional |
-| `DISCORD_WEBHOOK` | url_webhook | ❌ Opcional |
-
-## 🎮 Como Funciona
-
-### Build Automático
-- **Executa 2x ao dia** (00:00 e 12:00 UTC)
-- **Verifica** se há nova versão do n8n
-- **Só builda se necessário**
-
-### Build Manual
-```bash
-# Via GitHub CLI
-gh workflow run auto-build.yml -f force_build=true
-
-# Ou pelo GitHub UI
-Actions > ZION N8N Smart Build > Run workflow > force_build: true
+```mermaid
+graph LR
+    A[Scheduler/Push] --> B{Nova versão?}
+    B -->|Sim| C[Build Docker]
+    B -->|Não| D[Skip]
+    C --> E[Push Registry]
+    E --> F[Notificações]
+    F --> G[GitHub Release]
 ```
 
-### Monitoramento
-```bash
-# Verificar status
-./monitor.sh --check
+## 🐳 Uso das Imagens
 
-# Menu interativo
-./monitor.sh
+### Para Usuários Finais
 
-# Monitoramento contínuo
-./monitor.sh
-# Escolha opção 6
-```
-
-## 📊 Tags Criadas Automaticamente
-
-Para cada versão nova, são criadas as tags:
-
-- `zion/n8n:latest` - sempre a mais recente
-- `zion/n8n:1.23.0` - versão específica do n8n
-- `zion/n8n:1.23.0-20240115` - versão + data do build
-- `zion/n8n:stable` - última versão estável (sem -beta)
-
-## 🔔 Notificações
-
-Quando houver nova versão, o sistema:
-
-1. **Cria Release** no GitHub
-2. **Notifica Telegram** (se configurado)
-3. **Notifica Discord** (se configurado)
-4. **Atualiza Docker Hub** com as tags
-
-## 📈 Vantagens do Smart Builder
-
-| Feature | Benefício |
-|---------|-----------|
-| **Build Inteligente** | Só builda quando necessário |
-| **Versionamento Correto** | Tags com versão real do n8n |
-| **Multi-arquitetura** | Funciona em ARM (Raspberry) |
-| **Notificações** | Comunidade sempre informada |
-| **Cache Otimizado** | Builds mais rápidas |
-| **Healthcheck** | Monitora saúde do container |
-
-## 🎯 Para a Comunidade
-
-### Instalação Simples
 ```bash
 # Última versão
-docker run -d -p 5678:5678 zion/n8n:latest
+docker pull seu-usuario/sua-imagem:latest
 
 # Versão específica
-docker run -d -p 5678:5678 zion/n8n:1.23.0
+docker pull seu-usuario/sua-imagem:1.2.3
+
+# Docker Compose
+docker-compose up -d
 ```
 
-### Sempre Atualizado
-```bash
-# Pull da nova versão
-docker pull zion/n8n:latest
+### Docker Compose Exemplo
 
-# Restart
-docker-compose restart
+```yaml
+version: '3.8'
+
+services:
+  app:
+    image: seu-usuario/sua-imagem:latest
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      - TZ=America/Sao_Paulo
+    volumes:
+      - ./data:/data
 ```
 
-## 🛠 Customizações Extras
+## 🔧 Customização Avançada
 
-### Adicionar mais ferramentas no Dockerfile:
+### Ajustar Frequência de Verificação
+
+```yaml
+# No arquivo .github/workflows/auto-build.yml
+on:
+  schedule:
+    - cron: '0 */6 * * *'  # A cada 6 horas
+```
+
+### Adicionar Dependências no Dockerfile
+
 ```dockerfile
+FROM base-image:latest
+
+USER root
+
+# Suas customizações
 RUN apk add --no-cache \
-    sua-ferramenta \
-    outro-pacote
+    git \
+    curl \
+    python3 \
+    && pip3 install requests
 
-RUN pip3 install \
-    seu-modulo-python
+# Suas configurações
+ENV CUSTOM_VAR=value \
+    TZ=America/Sao_Paulo
+
+USER app
 ```
 
-### Ajustar frequência de verificação:
+### Múltiplas Tags
+
 ```yaml
-schedule:
-  - cron: '0 */4 * * *'  # A cada 4 horas
+tags: |
+  ${{ env.IMAGE_NAME }}:latest
+  ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+  ${{ env.IMAGE_NAME }}:stable
+  ghcr.io/${{ github.repository }}:latest
 ```
 
-### Adicionar mais notificações:
+## 📈 Monitoramento
+
+### Status Badges
+
+```markdown
+![Build Status](https://github.com/USER/REPO/actions/workflows/auto-build.yml/badge.svg)
+![Docker Version](https://img.shields.io/docker/v/USER/IMAGE?label=version)
+![Docker Pulls](https://img.shields.io/docker/pulls/USER/IMAGE)
+```
+
+### Comandos Úteis
+
+```bash
+# Verificar builds
+gh run list --workflow=auto-build.yml
+
+# Forçar build manual
+gh workflow run auto-build.yml -f force_build=true
+
+# Ver logs
+gh run view --log
+```
+
+## 🚀 Casos de Uso
+
+### 1. N8N Customizado
+- Adiciona ferramentas extras
+- Configura timezone brasileiro
+- Instala dependências Python
+
+### 2. Directus Estendido
+- Adiciona processamento de imagem
+- Instala extensões customizadas
+- Configura cache otimizado
+
+### 3. Aplicação Própria
+- Build automático de releases
+- Deploy contínuo
+- Versionamento semântico
+
+## 🏆 Benefícios
+
+| Recurso | Impacto |
+|---------|---------|
+| **Build Inteligente** | -90% builds desnecessários |
+| **Multi-arch** | Suporte total ARM/x86 |
+| **Cache** | 5x mais rápido |
+| **Automação** | Zero intervenção manual |
+| **Notificações** | Equipe sempre informada |
+
+## 📝 Melhores Práticas
+
+### ✅ Faça
+- Use tags semânticas (v1.2.3)
+- Configure health checks
+- Documente variáveis de ambiente
+- Use secrets para credenciais
+- Implemente cache de build
+
+### ❌ Evite
+- Hardcode de credenciais
+- Builds sem versionamento
+- Ignorar falhas de build
+- Pular testes de saúde
+- Usar `latest` em produção
+
+## 🆘 Troubleshooting
+
+### Build Falhando
+
+```bash
+# Verificar logs
+gh run view [RUN_ID] --log
+
+# Verificar secrets
+gh secret list
+
+# Testar localmente
+docker build -t test .
+```
+
+### Erro de Permissão
+
 ```yaml
-- name: Email
-  uses: dawidd6/action-send-mail@v3
-  with:
-    to: comunidade@zion.dev
-    subject: Nova versão ZION/N8N
+# Adicionar no workflow
+permissions:
+  contents: write
+  packages: write
 ```
 
-## ✅ Checklist Final
+### Cache não Funcionando
 
-- [ ] Repositório criado no GitHub
-- [ ] Arquivos copiados (Dockerfile, workflows, etc)
-- [ ] Secrets configurados (Docker Hub credentials)
-- [ ] Primeiro push feito
-- [ ] GitHub Actions rodando
-- [ ] Imagem disponível no Docker Hub
-- [ ] Comunidade notificada
+```yaml
+# Limpar e reconstruir
+cache-from: type=gha
+cache-to: type=gha,mode=max
+```
 
-## 🚀 Resultado
+## 📚 Recursos Adicionais
 
-Você terá:
-- ✅ **Build automático** apenas quando necessário
-- ✅ **Versionamento correto** com tags do n8n
-- ✅ **Zero manutenção** após configurar
-- ✅ **Comunidade feliz** com updates automáticos
-- ✅ **Economia de recursos** (não builda à toa)
+- [GitHub Actions Docs](https://docs.github.com/actions)
+- [Docker Hub](https://hub.docker.com)
+- [Buildx Documentation](https://docs.docker.com/buildx/working-with-buildx/)
 
 ---
 
-## 💡 Dica Pro
+## 💡 Quick Start
 
-Use o badge no README da comunidade:
+```bash
+# Clone o template
+git clone https://github.com/exemplo/template-smart-builder
+cd template-smart-builder
 
-```markdown
-[![ZION N8N Version](https://img.shields.io/docker/v/zion/n8n/latest?label=ZION%20N8N)](https://hub.docker.com/r/zion/n8n)
-[![Build Status](https://github.com/zion/n8n/actions/workflows/auto-build.yml/badge.svg)](https://github.com/zion/n8n/actions)
+# Configure
+cp .env.example .env
+# Edite .env com suas configs
+
+# Deploy
+./deploy.sh
 ```
 
-Isso mostra sempre a versão atual e o status do build! 🎯
+**Pronto!** Seu sistema de build inteligente está configurado e funcionando automaticamente! 🎉
