@@ -1,0 +1,169 @@
+# ZION DIRECTUS - Auto Builder Inteligente
+name: 🚀 ZION Directus Smart Build
+
+on:
+  schedule:
+    - cron: '0 2,14 * * *'  # 2x por dia (horários diferentes do n8n)
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Forçar build mesmo sem atualização'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  push:
+    branches: [main]
+    paths:
+      - 'directus/Dockerfile'
+      - '.github/workflows/directus-auto-build.yml'
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  IMAGE_NAME: iazion/directus
+
+jobs:
+  check-version:
+    name: 🔍 Verificar Versão Directus
+    runs-on: ubuntu-latest
+    outputs:
+      needs_build: ${{ steps.compare.outputs.needs_build }}
+      directus_version: ${{ steps.check.outputs.directus_version }}
+      build_date: ${{ steps.check.outputs.build_date }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Verificar versão do Directus
+        id: check
+        run: |
+          echo "🔍 Buscando última versão do Directus..."
+          # Directus usa tags no formato vX.X.X
+          DIRECTUS_VERSION=$(curl -s https://api.github.com/repos/directus/directus/releases/latest | jq -r .tag_name)
+          DIRECTUS_VERSION_CLEAN=${DIRECTUS_VERSION#v}
+          
+          echo "📦 Versão Directus: $DIRECTUS_VERSION_CLEAN"
+          echo "directus_version=$DIRECTUS_VERSION_CLEAN" >> $GITHUB_OUTPUT
+          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+      
+      - name: 🏷️ Verificar nossa versão
+        id: our_version
+        run: |
+          DOCKER_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "none")
+          
+          if echo "$DOCKER_TAGS" | grep -q "^${{ steps.check.outputs.directus_version }}$"; then
+            echo "✅ Já temos a versão ${{ steps.check.outputs.directus_version }}"
+            echo "has_version=true" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 Nova versão disponível: ${{ steps.check.outputs.directus_version }}"
+            echo "has_version=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🤔 Decidir se precisa build
+        id: compare
+        run: |
+          NEEDS_BUILD="false"
+          
+          if [[ "${{ github.event.inputs.force_build }}" == "true" ]]; then
+            NEEDS_BUILD="true"
+            echo "✅ Build forçado pelo usuário"
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            NEEDS_BUILD="true"
+            echo "✅ Push detectado - rebuild necessário"
+          elif [[ "${{ steps.our_version.outputs.has_version }}" == "false" ]]; then
+            NEEDS_BUILD="true"
+            echo "✅ Nova versão disponível - build necessário"
+          else
+            echo "⏭️ Build não necessário - versão já existe"
+          fi
+          
+          echo "needs_build=$NEEDS_BUILD" >> $GITHUB_OUTPUT
+
+  build-and-push:
+    name: 🔨 Build e Push Directus
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.needs_build == 'true'
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup QEMU
+        uses: docker/setup-qemu-action@v3
+      
+      - name: 🔧 Setup Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: 🔐 Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: 🚀 Build e Push Multi-Arch
+        uses: docker/build-push-action@v5
+        with:
+          context: ./directus
+          file: ./directus/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:latest
+            ${{ env.IMAGE_NAME }}:${{ needs.check-version.outputs.directus_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            DIRECTUS_VERSION=${{ needs.check-version.outputs.directus_version }}
+            BUILD_DATE=${{ needs.check-version.outputs.build_date }}
+
+  notify:
+    name: 📢 Notificar
+    runs-on: ubuntu-latest
+    needs: [check-version, build-and-push]
+    if: needs.build-and-push.result == 'success'
+    
+    steps:
+      - name: 📱 Telegram
+        continue-on-error: true
+        env:
+          TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          if [ ! -z "$TOKEN" ]; then
+            MESSAGE="🎯 Nova versão ZION/Directus disponível!
+            
+📦 Versão: ${{ needs.check-version.outputs.directus_version }}
+🐳 Docker: iazion/directus:latest
+📅 Build: ${{ needs.check-version.outputs.build_date }}
+            
+Pull: docker pull ${{ env.IMAGE_NAME }}:latest"
+            
+            curl -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
+              -d "chat_id=${CHAT}" \
+              -d "text=${MESSAGE}" \
+              -d "parse_mode=HTML" || echo "Telegram não configurado"
+          fi
+      
+      - name: 💬 Discord
+        continue-on-error: true
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          if [ ! -z "$WEBHOOK" ]; then
+            curl -H "Content-Type: application/json" -X POST \
+              -d '{
+                "embeds": [{
+                  "title": "🎯 ZION Directus - Nova Versão!",
+                  "description": "Nova versão do Directus disponível",
+                  "color": 6570404,
+                  "fields": [
+                    {"name": "📦 Versão", "value": "'${{ needs.check-version.outputs.directus_version }}'", "inline": true},
+                    {"name": "🐳 Imagem", "value": "`'${{ env.IMAGE_NAME }}':latest`", "inline": true},
+                    {"name": "📅 Build", "value": "'${{ needs.check-version.outputs.build_d
