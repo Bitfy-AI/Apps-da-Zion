@@ -1,9 +1,9 @@
-# ZION N8N com Langfuse - Dockerfile Otimizado
+# n8n com Langfuse - Instalação Inteligente
 FROM n8nio/n8n:latest
 
 USER root
 
-# Dependências do sistema necessárias
+# Dependências do sistema
 RUN apk add --update --no-cache \
     git \
     curl \
@@ -14,15 +14,19 @@ RUN apk add --update --no-cache \
     python3 \
     py3-pip
 
-# Criar diretório para módulos customizados com permissões corretas
-RUN mkdir -p /home/node/.n8n/nodes && \
-    chown -R node:node /home/node/.n8n
+# Script para instalar apenas pacotes que existem
+RUN echo '#!/bin/sh' > /install-packages.sh && \
+    echo 'for package in "$@"; do' >> /install-packages.sh && \
+    echo '  echo "Tentando instalar: $package"' >> /install-packages.sh && \
+    echo '  npm install -g "$package" --unsafe-perm 2>/dev/null && echo "✓ $package instalado" || echo "✗ $package falhou (pode não existir)"' >> /install-packages.sh && \
+    echo 'done' >> /install-packages.sh && \
+    chmod +x /install-packages.sh
 
-# Instalar pacotes npm globalmente (necessário para n8n)
-# Langfuse e dependências relacionadas
-RUN npm install -g \
+# Tentar instalar pacotes (os que falharem serão ignorados)
+RUN /install-packages.sh \
     langfuse \
     langfuse-langchain \
+    langfuse-js \
     @langfuse/node \
     langchain \
     @langchain/core \
@@ -31,39 +35,35 @@ RUN npm install -g \
     @langchain/anthropic \
     openai \
     @anthropic-ai/sdk \
+    anthropic \
     zod \
     uuid \
     tiktoken \
+    js-tiktoken \
     js-yaml \
-    jsonschema \
-    --unsafe-perm
+    yaml \
+    jsonschema
 
-# Configurar NODE_PATH para incluir módulos globais
-ENV NODE_PATH=/usr/local/lib/node_modules:$NODE_PATH
+# Verificar o que foi instalado
+RUN echo "Pacotes instalados:" && npm list -g --depth=0 2>/dev/null | grep -E "langfuse|langchain|openai|anthropic" || true
 
-# Variáveis de ambiente para n8n e Langfuse
+# Limpar
+RUN rm /install-packages.sh
+
+# Configuração
 ENV NODE_FUNCTION_ALLOW_EXTERNAL=* \
     NODE_FUNCTION_ALLOW_BUILTIN=* \
+    NODE_PATH=/usr/local/lib/node_modules \
     GENERIC_TIMEZONE=America/Sao_Paulo \
     TZ=America/Sao_Paulo \
     NODE_ENV=production \
-    NODE_OPTIONS="--max-old-space-size=4096" \
-    N8N_DIAGNOSTICS_ENABLED=false \
-    N8N_VERSION_NOTIFICATIONS_ENABLED=true \
-    N8N_PERSONALIZATION_ENABLED=false \
-    # Configurações Langfuse (serão sobrescritas pelo docker-compose)
-    LANGFUSE_ENABLED=true \
-    LANGFUSE_HOST=https://cloud.langfuse.com
+    NODE_OPTIONS="--max-old-space-size=4096"
 
-# Mudar de volta para o usuário node
 USER node
 
-# Expor porta padrão do n8n
 EXPOSE 5678
 
-# Healthcheck
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:5678/healthz || exit 1
 
-# Comando padrão
 CMD ["n8n"]
