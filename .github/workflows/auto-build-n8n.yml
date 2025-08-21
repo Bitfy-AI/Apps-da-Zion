@@ -1,176 +1,71 @@
-# .github/workflows/auto-build.yml
-# ZION N8N - Auto Builder Inteligente (VERSÃO CORRIGIDA)
-
-name: 🚀 ZION | n8n Smart Build
+name: 📦 Build N8N
 
 on:
-  schedule:
-    - cron: '0 0,12 * * *'  # 2x por dia
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      force_build:
-        description: 'Forçar build mesmo sem atualização'
+      check_version:
         required: false
-        default: 'false'
-        type: choice
-        options:
-          - 'true'
-          - 'false'
-  push:
-    branches: [main]
-    paths:
-      - 'Dockerfile'
-      
-permissions:
-  contents: write
-  packages: write
-  actions: write
-  id-token: write
-  
+        type: boolean
+        default: true
+
 env:
   IMAGE_NAME: iazion/n8n
+  SERVICE: n8n
 
 jobs:
-  check-version:
-    name: 🔍 Verificar Versão
+  check-and-build:
+    name: N8N Build
     runs-on: ubuntu-latest
-    outputs:
-      needs_build: ${{ steps.compare.outputs.needs_build }}
-      n8n_version: ${{ steps.check.outputs.n8n_version }}
-      n8n_version_clean: ${{ steps.check.outputs.n8n_version_clean }}
-      build_date: ${{ steps.check.outputs.build_date }}
     
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
       
-      - name: 🔍 Verificar versão do n8n
-        id: check
+      - name: 🔍 Verificar versão
+        id: version
+        if: inputs.check_version
         run: |
-          echo "🔍 Buscando última versão do n8n..."
-          N8N_VERSION=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases/latest | jq -r .tag_name)
-          N8N_VERSION_CLEAN=${N8N_VERSION#n8n@}
-          N8N_VERSION_CLEAN=${N8N_VERSION_CLEAN#v}
+          echo "🔍 Verificando versão do N8N..."
+          LATEST=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases/latest | jq -r .tag_name)
+          LATEST_CLEAN=${LATEST#n8n@}
+          LATEST_CLEAN=${LATEST_CLEAN#v}
           
-          echo "📦 Versão n8n: $N8N_VERSION_CLEAN"
-          echo "n8n_version=$N8N_VERSION" >> $GITHUB_OUTPUT
-          echo "n8n_version_clean=$N8N_VERSION_CLEAN" >> $GITHUB_OUTPUT
-          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
-      
-      - name: 🏷️ Verificar nossa versão
-        id: our_version
-        run: |
-          DOCKER_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "none")
+          # Verificar se já temos essa versão
+          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "")
           
-          if echo "$DOCKER_TAGS" | grep -q "^${{ steps.check.outputs.n8n_version_clean }}$"; then
-            echo "✅ Já temos a versão ${{ steps.check.outputs.n8n_version_clean }}"
-            echo "has_version=true" >> $GITHUB_OUTPUT
+          if echo "$TAGS" | grep -q "^${LATEST_CLEAN}$"; then
+            echo "✅ Versão ${LATEST_CLEAN} já existe"
+            echo "skip=true" >> $GITHUB_OUTPUT
           else
-            echo "🆕 Nova versão: ${{ steps.check.outputs.n8n_version_clean }}"
-            echo "has_version=false" >> $GITHUB_OUTPUT
-          fi
-      
-      - name: 🤔 Decidir se precisa build
-        id: compare
-        run: |
-          NEEDS_BUILD="false"
-          
-          if [[ "${{ github.event.inputs.force_build }}" == "true" ]]; then
-            NEEDS_BUILD="true"
-            echo "✅ Build forçado"
-          elif [[ "${{ github.event_name }}" == "push" ]]; then
-            NEEDS_BUILD="true"
-            echo "✅ Push detectado"
-          elif [[ "${{ steps.our_version.outputs.has_version }}" == "false" ]]; then
-            NEEDS_BUILD="true"
-            echo "✅ Nova versão disponível"
-          else
-            echo "⏭️ Build não necessário"
+            echo "🆕 Nova versão: ${LATEST_CLEAN}"
+            echo "skip=false" >> $GITHUB_OUTPUT
           fi
           
-          echo "needs_build=$NEEDS_BUILD" >> $GITHUB_OUTPUT
-
-  build-and-push:
-    name: 🔨 Build e Push
-    runs-on: ubuntu-latest
-    needs: check-version
-    if: needs.check-version.outputs.needs_build == 'true'
-    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
+          echo "version=${LATEST_CLEAN}" >> $GITHUB_OUTPUT
       
-      - name: 🔧 Setup QEMU
-        uses: docker/setup-qemu-action@v3
-      
-      - name: 🔧 Setup Buildx
+      - name: 🔧 Setup Docker Buildx
+        if: steps.version.outputs.skip != 'true'
         uses: docker/setup-buildx-action@v3
       
       - name: 🔐 Login Docker Hub
+        if: steps.version.outputs.skip != 'true'
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
           password: ${{ secrets.DOCKER_PASSWORD }}
       
       - name: 🚀 Build e Push
+        if: steps.version.outputs.skip != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./n8n
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest
-            ${{ env.IMAGE_NAME }}:${{ needs.check-version.outputs.n8n_version_clean }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+            ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
+          cache-from: type=gha,scope=n8n
+          cache-to: type=gha,scope=n8n,mode=max
           build-args: |
-            N8N_VERSION=${{ needs.check-version.outputs.n8n_version_clean }}
-            BUILD_DATE=${{ needs.check-version.outputs.build_date }}
-
-  notify:
-    name: 📢 Notificar
-    runs-on: ubuntu-latest
-    needs: [check-version, build-and-push]
-    if: needs.build-and-push.result == 'success'
-    permissions:
-      contents: write  # Permissão para criar releases e tags    
-    steps:
-      - name: 📥 Checkout
-        uses: actions/checkout@v4
-      
-      - name: 📱 Telegram
-        continue-on-error: true
-        env:
-          TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          CHAT: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: |
-          if [ ! -z "$TOKEN" ]; then
-            curl -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
-              -d "chat_id=${CHAT}" \
-              -d "text=🚀 Nova versão ZION/N8N: ${{ needs.check-version.outputs.n8n_version_clean }}" \
-              || echo "Telegram não configurado"
-          fi
-      
-      - name: 💬 Discord
-        continue-on-error: true
-        env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          if [ ! -z "$WEBHOOK" ]; then
-            curl -H "Content-Type: application/json" -X POST \
-              -d '{"content":"🚀 Nova versão ZION/N8N: ${{ needs.check-version.outputs.n8n_version_clean }}"}' \
-              "${WEBHOOK}" || echo "Discord não configurado"
-          fi
-      
-      - name: 🏷️ GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          token: ${{ secrets.PERSONAL_TOKEN }}  # Usar PAT ao invés de GITHUB_TOKEN
-          tag_name: v${{ needs.check-version.outputs.n8n_version_clean }}
-          name: ZION N8N v${{ needs.check-version.outputs.n8n_version_clean }}
-          body: |
-            ## Nova versão disponível!
-            - n8n: v${{ needs.check-version.outputs.n8n_version_clean }}
-            - Docker: `docker pull ${{ env.IMAGE_NAME }}:latest`
-            - n8n: v${{ needs.check-version.outputs.n8n_version_clean }}
-            - Docker: `docker pull ${{ env.IMAGE_NAME }}:latest`
+            VERSION=${{ steps.version.outputs.version }}
+            BUILD_DATE=${{ github.run_id }}
