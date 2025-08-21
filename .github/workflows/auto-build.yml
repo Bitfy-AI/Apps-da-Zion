@@ -1,0 +1,333 @@
+# .github/workflows/auto-build.yml
+# ============================================
+# ZION N8N - Auto Builder Inteligente
+# ============================================
+
+name: 🚀 ZION N8N Smart Build
+
+on:
+  # Verifica 2x por dia se há atualizações
+  schedule:
+    - cron: '0 0,12 * * *'
+  
+  # Build manual quando quiser
+  workflow_dispatch:
+    inputs:
+      force_build:
+        description: 'Forçar build mesmo sem atualização'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+  
+  # Build ao fazer push
+  push:
+    branches: [main]
+    paths:
+      - 'Dockerfile'
+      - '.github/workflows/auto-build.yml'
+
+env:
+  DOCKER_REGISTRY: docker.io
+  IMAGE_NAME: zion/n8n
+
+jobs:
+  # JOB 1: Verificar se precisa build
+  check-version:
+    name: 🔍 Verificar Versão
+    runs-on: ubuntu-latest
+    outputs:
+      needs_build: ${{ steps.compare.outputs.needs_build }}
+      n8n_version: ${{ steps.check.outputs.n8n_version }}
+      n8n_version_clean: ${{ steps.check.outputs.n8n_version_clean }}
+      build_date: ${{ steps.check.outputs.build_date }}
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🔍 Verificar versão do n8n oficial
+        id: check
+        run: |
+          echo "🔍 Buscando última versão do n8n..."
+          
+          # Pegar última versão do n8n oficial
+          N8N_VERSION=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases/latest | jq -r .tag_name)
+          N8N_VERSION_CLEAN=${N8N_VERSION#n8n@}  # Remove prefixo se houver
+          N8N_VERSION_CLEAN=${N8N_VERSION_CLEAN#v}  # Remove v se houver
+          
+          echo "📦 Versão n8n oficial: $N8N_VERSION_CLEAN"
+          
+          # Salvar outputs
+          echo "n8n_version=$N8N_VERSION" >> $GITHUB_OUTPUT
+          echo "n8n_version_clean=$N8N_VERSION_CLEAN" >> $GITHUB_OUTPUT
+          echo "build_date=$(date +'%Y%m%d')" >> $GITHUB_OUTPUT
+      
+      - name: 🏷️ Verificar nossa última versão
+        id: our_version
+        run: |
+          echo "🔍 Verificando nossa última build..."
+          
+          # Verificar se nossa imagem existe e pegar tags
+          DOCKER_TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "none")
+          
+          echo "📋 Nossas tags atuais:"
+          echo "$DOCKER_TAGS" | head -5
+          
+          # Verificar se já temos essa versão
+          if echo "$DOCKER_TAGS" | grep -q "^${{ steps.check.outputs.n8n_version_clean }}$"; then
+            echo "✅ Versão ${{ steps.check.outputs.n8n_version_clean }} já existe"
+            echo "has_version=true" >> $GITHUB_OUTPUT
+          else
+            echo "🆕 Nova versão detectada: ${{ steps.check.outputs.n8n_version_clean }}"
+            echo "has_version=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: 🤔 Decidir se precisa build
+        id: compare
+        run: |
+          echo "📊 Analisando necessidade de build..."
+          
+          # Verificar condições
+          NEEDS_BUILD="false"
+          REASON=""
+          
+          # 1. Se forçar build
+          if [[ "${{ github.event.inputs.force_build }}" == "true" ]]; then
+            NEEDS_BUILD="true"
+            REASON="Build forçado manualmente"
+          
+          # 2. Se é push no main com mudanças no Dockerfile
+          elif [[ "${{ github.event_name }}" == "push" ]]; then
+            NEEDS_BUILD="true"
+            REASON="Alterações no Dockerfile"
+          
+          # 3. Se não temos a versão ainda
+          elif [[ "${{ steps.our_version.outputs.has_version }}" == "false" ]]; then
+            NEEDS_BUILD="true"
+            REASON="Nova versão do n8n: ${{ steps.check.outputs.n8n_version_clean }}"
+          fi
+          
+          # Output
+          echo "needs_build=$NEEDS_BUILD" >> $GITHUB_OUTPUT
+          
+          # Log
+          if [[ "$NEEDS_BUILD" == "true" ]]; then
+            echo "✅ Build necessário: $REASON"
+          else
+            echo "⏭️ Build não necessário - versão já está atualizada"
+          fi
+
+  # JOB 2: Build e Push (só roda se precisar)
+  build-and-push:
+    name: 🔨 Build ZION N8N
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.needs_build == 'true'
+    
+    steps:
+      - name: 📥 Checkout
+        uses: actions/checkout@v4
+      
+      - name: 🔧 Setup QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/amd64,linux/arm64
+      
+      - name: 🔧 Setup Docker Buildx
+        uses: docker/setup-buildx-action@v3
+        with:
+          version: latest
+          driver-opts: network=host
+      
+      - name: 🔐 Login Docker Hub
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.DOCKER_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      
+      - name: 📊 Preparar Metadata
+        id: meta
+        run: |
+          echo "🏷️ Preparando tags..."
+          
+          VERSION="${{ needs.check-version.outputs.n8n_version_clean }}"
+          DATE="${{ needs.check-version.outputs.build_date }}"
+          
+          # Criar lista de tags
+          TAGS="${{ env.IMAGE_NAME }}:latest"
+          TAGS="$TAGS,${{ env.IMAGE_NAME }}:$VERSION"
+          TAGS="$TAGS,${{ env.IMAGE_NAME }}:$VERSION-$DATE"
+          
+          # Se for stable release (não tem - no nome)
+          if [[ ! "$VERSION" =~ "-" ]]; then
+            TAGS="$TAGS,${{ env.IMAGE_NAME }}:stable"
+          fi
+          
+          echo "📝 Tags que serão criadas:"
+          echo "$TAGS" | tr ',' '\n'
+          
+          echo "tags=$TAGS" >> $GITHUB_OUTPUT
+      
+      - name: 🚀 Build e Push
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            N8N_VERSION=${{ needs.check-version.outputs.n8n_version_clean }}
+            BUILD_DATE=${{ needs.check-version.outputs.build_date }}
+            VCS_REF=${{ github.sha }}
+          labels: |
+            org.opencontainers.image.title=ZION N8N
+            org.opencontainers.image.description=n8n com ferramentas extras da comunidade ZION
+            org.opencontainers.image.url=https://github.com/${{ github.repository }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.version=${{ needs.check-version.outputs.n8n_version_clean }}
+            org.opencontainers.image.created=${{ needs.check-version.outputs.build_date }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.vendor=ZION Community
+      
+      - name: 📝 Criar Release Notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << EOF
+          ## 🚀 ZION N8N v${{ needs.check-version.outputs.n8n_version_clean }}
+          
+          ### 📦 Versão do n8n
+          - n8n oficial: **${{ needs.check-version.outputs.n8n_version_clean }}**
+          - Build: **${{ needs.check-version.outputs.build_date }}**
+          
+          ### 🐳 Como usar
+          \`\`\`bash
+          # Pull da nova versão
+          docker pull ${{ env.IMAGE_NAME }}:latest
+          
+          # Ou versão específica
+          docker pull ${{ env.IMAGE_NAME }}:${{ needs.check-version.outputs.n8n_version_clean }}
+          
+          # Rodar
+          docker run -d -p 5678:5678 ${{ env.IMAGE_NAME }}:latest
+          \`\`\`
+          
+          ### 🔄 Para atualizar instalação existente
+          \`\`\`bash
+          docker-compose pull
+          docker-compose up -d
+          \`\`\`
+          
+          ### ✨ O que está incluído
+          - ✅ n8n v${{ needs.check-version.outputs.n8n_version_clean }}
+          - ✅ Python 3 + bibliotecas (pandas, requests, beautifulsoup4, openai)
+          - ✅ Git, FFmpeg, ImageMagick
+          - ✅ Timezone Brasil configurado
+          - ✅ Multi-arquitetura (amd64, arm64)
+          
+          ---
+          💬 [Comunidade ZION](https://t.me/zioncommunity) | 📚 [Documentação](https://github.com/${{ github.repository }})
+          EOF
+
+  # JOB 3: Notificar comunidade (só se teve build)
+  notify:
+    name: 📢 Notificar Comunidade
+    runs-on: ubuntu-latest
+    needs: [check-version, build-and-push]
+    if: always() && needs.build-and-push.result == 'success'
+    
+    steps:
+      - name: 📱 Notificar Telegram
+        if: secrets.TELEGRAM_TOKEN != ''
+        continue-on-error: true
+        run: |
+          MESSAGE="🚀 *Nova versão ZION/N8N disponível!*
+          
+          📦 Versão: \`${{ needs.check-version.outputs.n8n_version_clean }}\`
+          📅 Data: ${{ needs.check-version.outputs.build_date }}
+          
+          🐳 Para atualizar:
+          \`\`\`
+          docker pull zion/n8n:latest
+          docker-compose up -d
+          \`\`\`
+          
+          📚 [Ver Release](https://github.com/${{ github.repository }}/releases)"
+          
+          curl -X POST "https://api.telegram.org/bot${{ secrets.TELEGRAM_TOKEN }}/sendMessage" \
+            -d "chat_id=${{ secrets.TELEGRAM_CHAT_ID }}" \
+            -d "text=$MESSAGE" \
+            -d "parse_mode=Markdown" \
+            -d "disable_web_page_preview=true"
+      
+      - name: 💬 Notificar Discord
+        if: secrets.DISCORD_WEBHOOK != ''
+        continue-on-error: true
+        run: |
+          curl -H "Content-Type: application/json" \
+            -X POST \
+            -d '{
+              "embeds": [{
+                "title": "🚀 Nova versão ZION/N8N disponível!",
+                "description": "Versão **${{ needs.check-version.outputs.n8n_version_clean }}** está pronta para uso!",
+                "color": 5814783,
+                "fields": [
+                  {
+                    "name": "📦 Versão",
+                    "value": "`${{ needs.check-version.outputs.n8n_version_clean }}`",
+                    "inline": true
+                  },
+                  {
+                    "name": "📅 Build",
+                    "value": "${{ needs.check-version.outputs.build_date }}",
+                    "inline": true
+                  },
+                  {
+                    "name": "🐳 Como atualizar",
+                    "value": "```bash\ndocker pull zion/n8n:latest```"
+                  }
+                ],
+                "footer": {
+                  "text": "ZION Community"
+                },
+                "timestamp": "'$(date -u +%Y-%m-%dT%H:%M:%S.000Z)'"
+              }]
+            }' \
+            ${{ secrets.DISCORD_WEBHOOK }}
+      
+      - name: 🏷️ Criar Release no GitHub
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ needs.check-version.outputs.n8n_version_clean }}
+          name: ZION N8N v${{ needs.check-version.outputs.n8n_version_clean }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # JOB 4: Log quando não precisar build
+  skip-build:
+    name: ⏭️ Build Não Necessário
+    runs-on: ubuntu-latest
+    needs: check-version
+    if: needs.check-version.outputs.needs_build == 'false'
+    
+    steps:
+      - name: 📝 Log
+        run: |
+          echo "⏭️ Build pulado - já temos a versão ${{ needs.check-version.outputs.n8n_version_clean }}"
+          echo ""
+          echo "📊 Status:"
+          echo "- n8n oficial: ${{ needs.check-version.outputs.n8n_version_clean }}"
+          echo "- Nossa imagem: zion/n8n:${{ needs.check-version.outputs.n8n_version_clean }} ✅"
+          echo "- Próxima verificação: em 12 horas"
+          echo ""
+          echo "💡 Para forçar build, use o workflow_dispatch com force_build=true"
