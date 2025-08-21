@@ -1,7 +1,7 @@
 # .github/workflows/auto-build.yml
 # ZION N8N - Auto Builder Inteligente (VERSÃO CORRIGIDA)
 
-name: 🚀 ZION N8N Smart Build
+name: Buildar nova versão
 
 on:
   schedule:
@@ -131,7 +131,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [check-version, build-and-push]
     if: needs.build-and-push.result == 'success'
-    
+    permissions:
+      contents: write  # Permissão para criar releases e tags    
     steps:
       - name: 📥 Checkout
         uses: actions/checkout@v4
