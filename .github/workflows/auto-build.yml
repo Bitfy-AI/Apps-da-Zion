@@ -163,9 +163,12 @@ jobs:
       - name: 🏷️ GitHub Release
         uses: softprops/action-gh-release@v1
         with:
+          token: ${{ secrets.PERSONAL_TOKEN }}  # Usar PAT ao invés de GITHUB_TOKEN
           tag_name: v${{ needs.check-version.outputs.n8n_version_clean }}
           name: ZION N8N v${{ needs.check-version.outputs.n8n_version_clean }}
           body: |
             ## Nova versão disponível!
+            - n8n: v${{ needs.check-version.outputs.n8n_version_clean }}
+            - Docker: `docker pull ${{ env.IMAGE_NAME }}:latest`
             - n8n: v${{ needs.check-version.outputs.n8n_version_clean }}
             - Docker: `docker pull ${{ env.IMAGE_NAME }}:latest`
