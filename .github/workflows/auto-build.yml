@@ -20,10 +20,12 @@ on:
     branches: [main]
     paths:
       - 'Dockerfile'
+      
 permissions:
-  contents: write  # Necessário para criar releases
-  packages: write  # Se usar GitHub Container Registry
-  actions: read
+  contents: write
+  packages: write
+  actions: write
+  id-token: write
   
 env:
   IMAGE_NAME: iazion/n8n
