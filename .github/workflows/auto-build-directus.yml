@@ -1,4 +1,4 @@
-name: 📦 Build Directus
+name: 📦 Build N8N
 
 on:
   workflow_call:
@@ -9,12 +9,12 @@ on:
         default: true
 
 env:
-  IMAGE_NAME: iazion/directus
-  SERVICE: directus
+  IMAGE_NAME: iazion/n8n
+  SERVICE: n8n
 
 jobs:
   check-and-build:
-    name: Directus Build
+    name: N8N Build
     runs-on: ubuntu-latest
     
     steps:
@@ -25,9 +25,10 @@ jobs:
         id: version
         if: inputs.check_version
         run: |
-          echo "🔍 Verificando versão do Directus..."
-          LATEST=$(curl -s https://api.github.com/repos/directus/directus/releases/latest | jq -r .tag_name)
-          LATEST_CLEAN=${LATEST#v}
+          echo "🔍 Verificando versão do N8N..."
+          LATEST=$(curl -s https://api.github.com/repos/n8n-io/n8n/releases/latest | jq -r .tag_name)
+          LATEST_CLEAN=${LATEST#n8n@}
+          LATEST_CLEAN=${LATEST_CLEAN#v}
           
           # Verificar se já temos essa versão
           TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "")
@@ -57,14 +58,14 @@ jobs:
         if: steps.version.outputs.skip != 'true'
         uses: docker/build-push-action@v5
         with:
-          context: ./directus
+          context: ./n8n
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:latest
             ${{ env.IMAGE_NAME }}:${{ steps.version.outputs.version }}
-          cache-from: type=gha,scope=directus
-          cache-to: type=gha,scope=directus,mode=max
+          cache-from: type=gha,scope=n8n
+          cache-to: type=gha,scope=n8n,mode=max
           build-args: |
             VERSION=${{ steps.version.outputs.version }}
             BUILD_DATE=${{ github.run_id }}
