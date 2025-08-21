@@ -9,7 +9,7 @@ on:
         default: true
 
 env:
-  IMAGE_NAME: iazion/directus
+  IMAGE_NAME: iazion/directus  # ✅ Certifique-se que está definido
   SERVICE: directus
 
 jobs:
@@ -23,24 +23,40 @@ jobs:
       
       - name: 🔍 Verificar versão
         id: version
-        if: inputs.check_version
         run: |
           echo "🔍 Verificando versão do Directus..."
-          LATEST=$(curl -s https://api.github.com/repos/directus/directus/releases/latest | jq -r .tag_name)
+          
+          # Buscar última versão
+          LATEST=$(curl -s https://api.github.com/repos/directus/directus/releases/latest | jq -r .tag_name || echo "")
+          
+          # Limpar o prefixo 'v'
           LATEST_CLEAN=${LATEST#v}
           
-          # Verificar se já temos essa versão
-          TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' || echo "")
-          
-          if echo "$TAGS" | grep -q "^${LATEST_CLEAN}$"; then
-            echo "✅ Versão ${LATEST_CLEAN} já existe"
-            echo "skip=true" >> $GITHUB_OUTPUT
+          # Fallback se vazio
+          if [ -z "$LATEST_CLEAN" ]; then
+            LATEST_CLEAN="10.10.0"  # Versão fallback conhecida
+            echo "⚠️ Usando versão fallback: $LATEST_CLEAN"
           else
-            echo "🆕 Nova versão: ${LATEST_CLEAN}"
-            echo "skip=false" >> $GITHUB_OUTPUT
+            echo "✅ Versão encontrada: $LATEST_CLEAN"
           fi
           
+          # Sempre definir a versão
           echo "version=${LATEST_CLEAN}" >> $GITHUB_OUTPUT
+          
+          # Verificar se precisa build
+          if [[ "${{ inputs.check_version }}" == "true" ]]; then
+            TAGS=$(curl -s "https://hub.docker.com/v2/repositories/${{ env.IMAGE_NAME }}/tags?page_size=100" | jq -r '.results[].name' 2>/dev/null || echo "")
+            
+            if echo "$TAGS" | grep -q "^${LATEST_CLEAN}$"; then
+              echo "✅ Versão ${LATEST_CLEAN} já existe"
+              echo "skip=true" >> $GITHUB_OUTPUT
+            else
+              echo "🆕 Nova versão: ${LATEST_CLEAN}"
+              echo "skip=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
       
       - name: 🔧 Setup Docker Buildx
         if: steps.version.outputs.skip != 'true'
@@ -66,5 +82,5 @@ jobs:
           cache-from: type=gha,scope=directus
           cache-to: type=gha,scope=directus,mode=max
           build-args: |
-            VERSION=${{ steps.version.outputs.version }}
+            DIRECTUS_VERSION=${{ steps.version.outputs.version }}
             BUILD_DATE=${{ github.run_id }}
