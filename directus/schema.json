@@ -2166,7 +2166,7 @@
                 "numeric_precision": null,
                 "numeric_scale": null,
                 "is_generated": false,
-                "is_nullable": true,
+                "is_nullable": false,
                 "is_unique": false,
                 "is_indexed": false,
                 "is_primary_key": false,
@@ -36114,7 +36114,7 @@
                 "foreign_key_table": "agents",
                 "foreign_key_column": "id",
                 "on_update": "NO ACTION",
-                "on_delete": "SET NULL"
+                "on_delete": "SET DEFAULT"
             },
             "meta": {
                 "many_collection": "connections",
